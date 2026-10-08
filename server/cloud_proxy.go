@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/ollama/ollama/auth"
 	"github.com/ollama/ollama/envconfig"
@@ -42,6 +43,23 @@ var (
 	cloudProxySignRequest = signCloudProxyRequest
 	cloudProxySigninURL   = signinURL
 )
+
+// cloudProxySem bounds the number of concurrent in-flight requests to the
+// Ollama cloud proxy. It is derived from OLLAMA_MAX_CLOUD_CONCURRENCY and is
+// intentionally separate from the scheduler's local-runner semaphore
+// (s.seqsSem / OLLAMA_NUM_PARALLEL): cloud requests early-return before
+// scheduleRunner, so the scheduler semaphore never sees them. A nil semaphore
+// means "unlimited" and preserves upstream behavior.
+var cloudProxySem = newCloudProxySemaphore(envconfig.MaxCloudConcurrency())
+
+func newCloudProxySemaphore(limit int) *semaphore.Weighted {
+	if limit <= 0 {
+		return nil
+	}
+
+	slog.Info("cloud proxy concurrency limit enabled", "env", "OLLAMA_MAX_CLOUD_CONCURRENCY", "limit", limit)
+	return semaphore.NewWeighted(int64(limit))
+}
 
 var hopByHopHeaders = map[string]struct{}{
 	"connection":          {},
@@ -181,6 +199,16 @@ func proxyCloudRequestWithPath(c *gin.Context, body []byte, path string, disable
 	if disabled, _ := internalcloud.Status(); disabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": internalcloud.DisabledError(disabledOperation)})
 		return
+	}
+
+	if cloudProxySem != nil {
+		if err := cloudProxySem.Acquire(c.Request.Context(), 1); err != nil {
+			// Client went away (or the context was canceled) while waiting for a
+			// cloud slot; nothing to proxy anymore.
+			slog.Debug("cloud proxy slot wait aborted", "path", path, "error", err)
+			return
+		}
+		defer cloudProxySem.Release(1)
 	}
 
 	baseURL, err := url.Parse(cloudProxyBaseURL)
