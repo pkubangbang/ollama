@@ -1297,6 +1297,10 @@ function clean {
 }
 
 checkEnv
+# When dot-sourced by another script (e.g. build_windows_cpu_only.ps1), only the
+# function definitions and checkEnv should run; the default full-build dispatch
+# must not fire. Set MYCC_BUILD_NO_DISPATCH=1 in the sourcing script to skip it.
+if ("${env:MYCC_BUILD_NO_DISPATCH}" -ne "1") {
 try {
     if ($($args.count) -eq 0) {
         cpu
@@ -1329,4 +1333,5 @@ try {
 } finally {
     set-location $script:SRC_DIR
     $env:PKG_VERSION=""
+}
 }

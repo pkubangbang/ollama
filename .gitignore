@@ -16,3 +16,15 @@ llama/build
 llama/vendor
 /ollama
 integration/testdata/models/
+
+# mycc local state (ignore throwaway, keep reusable project skills)
+/.mycc/sessions/
+/.mycc/imgcache/
+/.mycc/longtext/
+/.mycc/tools/
+/.mycc/skill-index-cache.json
+# Note: /.mycc/skills/ is intentionally NOT ignored — project-level skills are committed.
+
+build-*.log
+
+/.mycc/*
