@@ -33,8 +33,8 @@ Produces `dist\windows-amd64\ollama.exe` plus CPU `llama-server` payloads under
 ### WHY two compilers
 - Go's cgo **cannot** use MSVC: `CC=cl` injects `/Werror` and fails with
   `cl : Command line error D8021 : invalid numeric argument '/Werror'`.
-  `mlxrunner/xgrammar.go` has an `#cgo` directive with **no build tag**, so the CLI
-  always needs a gcc-compatible C compiler.
+  `mlxrunner/xgrammar/xgrammar.go` carries a cgo directive, so the CLI always
+  needs a gcc-compatible C compiler.
 - CMake is driven by **MSVC + Ninja** (`ensureMsvcForNinja` enters the VS DevShell
   when `cl.exe` is not on PATH).
 - Upstream CI installs llvm-mingw ucrt for the CPU preset alongside MSVC+Ninja for
@@ -70,15 +70,16 @@ go build -trimpath `
   -o dist\windows-amd64\ollama.exe .
 ```
 
-Or run the CPU-only pipeline wrapper (skips cuda*/rocm*/vulkan/mlx):
+Or run the pipeline with explicit named steps (skips cuda*/rocm*/vulkan/mlx):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build_windows_cpu_only.ps1 cpu ollama
+powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 cpu ollama
 ```
 
-`scripts/build_windows_cpu_only.ps1` dot-sources `build_windows.ps1` with
-`MYCC_BUILD_NO_DISPATCH=1` and runs only `cpu, cpuArm64, ollama, ollamaArm64, app,
-appArm64, deps, sign, installer, zip`.
+`scripts/build_windows.ps1` dispatch is `$args`-driven: with no arguments it runs
+the full pipeline; with arguments (e.g. `cpu ollama`) it runs only those named
+functions via `& $($args[$i])`. There is no separate CPU-only wrapper script —
+select the CPU steps by name on the command line.
 
 ## Pitfalls
 
