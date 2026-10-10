@@ -18,4 +18,5 @@ llama/vendor
 integration/testdata/models/
 
 /.mycc/*
+!/.mycc/skills/
 node_modules/
