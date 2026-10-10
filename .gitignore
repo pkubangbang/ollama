@@ -16,3 +16,6 @@ llama/build
 llama/vendor
 /ollama
 integration/testdata/models/
+
+/.mycc/*
+node_modules/
