@@ -5,6 +5,7 @@
 .swp
 dist
 build
+*.log
 .cache
 .gocache
 *.exe

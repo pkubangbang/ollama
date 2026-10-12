@@ -32,8 +32,8 @@ only as a read-only `upstream` remote — do NOT target it.
 | gh CLI | 2.101.0, authenticated as `pkubangbang` (scopes: gist, read:org, repo, workflow) |
 | Proxy for slow uploads | `http://127.0.0.1:7777` |
 | Runner payload | `dist\windows-amd64\` (ollama.exe + `lib\ollama\` DLLs) |
-| Installer | `dist\OllamaSetup.exe` (produced by the app step) |
-| Version var | `version.Version` = `0.0.0` placeholder (no `-X` override needed for a CPU build) |
+| Installer | `dist\OllamaSetup.exe` (only if the app/installer steps ran — see build-windows-cpu-only) |
+| Version var | `version.Version` default is `0.0.0`; override with `-X ...version.Version=<ver>` at build time |
 
 ## Steps
 
@@ -43,7 +43,8 @@ only as a read-only `upstream` remote — do NOT target it.
 New-Item -ItemType Directory -Force -Path dist/release | Out-Null
 Compress-Archive -Path dist/windows-amd64/* `
   -DestinationPath dist/release/ollama-windows-amd64-cpu.zip -Force
-Copy-Item dist/OllamaSetup.exe dist/release/ -Force
+# Only if the app/installer steps ran (see the build-windows-cpu-only skill).
+if (Test-Path dist/OllamaSetup.exe) { Copy-Item dist/OllamaSetup.exe dist/release/ -Force }
 ```
 
 The zip must contain `ollama.exe` at the root and the backend under `lib/ollama/`
@@ -74,11 +75,14 @@ git tag -a v<VER>-cpu-win64 <commit> -m "CPU-only Windows build (windows-amd64, 
 git push origin v<VER>-cpu-win64
 
 # ALWAYS pass --repo: gh otherwise resolves to ollama/ollama and 404s.
+# Include dist/release/OllamaSetup.exe only if you staged it in step 1.
 gh release create v<VER>-cpu-win64 `
-  dist/release/ollama-windows-amd64-cpu.zip dist/release/OllamaSetup.exe `
+  dist/release/ollama-windows-amd64-cpu.zip `
   --repo pkubangbang/ollama --verify-tag `
   --title "Ollama v<VER>-cpu-win64 - CPU-only Windows build (driver-free)" `
   --notes-file dist/release/RELEASE_NOTES.md
+# then, if built, attach the installer:
+# gh release upload v<VER>-cpu-win64 dist/release/OllamaSetup.exe --repo pkubangbang/ollama --clobber
 ```
 
 ### 5. Verify
@@ -106,5 +110,14 @@ Confirm `isDraft=false` and that each asset's `digest` (`sha256:...`) matches st
    `gh release upload --clobber`, then publish the draft.
 4. **Publishing a draft.** `gh release edit <tag> --repo pkubangbang/ollama --draft=false --latest`.
    Note `--json` has NO `isLatest` field (valid: tagName,isDraft,isPrerelease,url,assets,body,...).
-5. **No prior tags exist** in this fork, so use the `v0.0.0-cpu-win64` scheme
-   (`version.Version` is the `0.0.0` placeholder).
+5. **Tag scheme tracks the upstream base.** Prior releases: `v0.0.0-cpu-win64` (initial, base
+   commit `b5371099`) and `v0.40.3-cpu-win64` (base `5a6c8782`, upstream `v0.40.3`). Use
+   `v<upstream-version>-cpu-win64` (e.g. `git describe --tags <commit>` → `v0.40.3`), and bake
+   the same number into `version.Version`/`app/version.Version` via `-ldflags -X` (the source
+   default is the `0.0.0` placeholder, so it is NOT automatic). Note the built CLI still
+   reports its git-describe string (`<hash>-dirty`) from `server/` while `--version`'s client
+   version shows the baked value.
+6. **Installer asset is optional.** The runner zip alone is a valid CPU-only release. If you
+   also ship `OllamaSetup.exe`, build it first with the build-windows-cpu-only skill's
+   app/installer steps, then upload it separately (`gh release upload <tag> dist/release/OllamaSetup.exe --repo pkubangbang/ollama --clobber`) or refresh the notes with
+   `gh release edit <tag> --repo pkubangbang/ollama --notes-file dist/release/RELEASE_NOTES.md`.
