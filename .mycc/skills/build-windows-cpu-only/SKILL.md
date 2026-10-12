@@ -9,7 +9,7 @@ description: >
   installer. Use when you need to produce dist\windows-amd64\ollama.exe, the CPU
   llama-server payloads, dist\windows-ollama-app-amd64.exe, and/or
   dist\OllamaSetup.exe without any CUDA/ROCm/Vulkan/MLX driver backends.
-keywords: [ollama, windows, build, cpu-only, llvm-mingw, cgo, msvc, ninja, cmake, driver-free, gcc, cross-compile, windows-amd64, app, installer, inno-setup, iscc, npm, react, ollama-setup, windowsgui]
+keywords: [ollama, windows, build, cpu-only, llvm-mingw, cgo, msvc, ninja, cmake, driver-free, gcc, cross-compile, windows-amd64, app, installer, inno-setup, iscc, npm, react, ollama-setup, windowsgui, tagged, release-tag, stable, nightly, canary]
 when: >
   when asked to build ollama for Windows on this machine's CPU-only / driver-free
   profile, or when the Go CLI cgo build fails with MSVC (cl D8021 / /Werror), or
@@ -22,6 +22,34 @@ when: >
 CPU-only, driver-free Windows build of ollama from `C:\Proj\ollama`.
 Produces `dist\windows-amd64\ollama.exe` plus CPU `llama-server` payloads under
 `dist\windows-amd64\lib\ollama\`.
+
+## Build from a TAGGED commit, not nightly/canary (stability)
+
+**Always base a shipped build on a release tag, never on the tip of `main`
+(a nightly / canary commit).** Untagged `main` tips are moving targets that may
+contain unreleased or later-reverted changes, so the artifact is not reproducible
+and its "what changed" story is unstable.
+
+```powershell
+# pick the newest STABLE release tag (exclude -rc/-ci/canary tags)
+git fetch upstream --tags
+$ver = git tag --sort=-v:refname | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Select-Object -First 1
+# resolve that tag's commit
+$commit = git rev-list -n1 $ver
+git describe --tags $commit          # confirm it is exactly the tag, no "-N-g<hash>" suffix
+```
+
+- A commit that `git describe --tags` reports as `vX.Y.Z` is a release commit;
+  one reported as `vX.Y.Z-N-g<hash>` (N > 0) or with no tag at all is a nightly /
+  canary commit — **do not ship it**.
+- Prefer the tag's own commit over a later `main` tip that merely *contains* the
+  tag (`git tag --contains`): the tag commit is the frozen release point.
+- Bake the tag version into the binaries (see "Commands"): `version.Version` /
+  `app/version.Version` via `-ldflags -X`, and use the matching release-tag scheme
+  `v<tag-version>-cpu-win64` for the fork tag.
+- Caveat observed in this repo: the fork's earlier shipped base (`v0.0.0-cpu-win64`)
+  was an untagged `main` commit that later became part of `v0.40.2` — a nightly base,
+  exactly what this rule avoids.
 
 ## Toolchain facts (verified on this machine)
 
