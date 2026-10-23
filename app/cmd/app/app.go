@@ -389,7 +389,7 @@ func runInitialWindowsUI(
 		showUIFn("/")
 		return
 	}
-	showUIFn("/connect")
+	showUIFn("/")
 }
 
 func startHiddenTasks() {

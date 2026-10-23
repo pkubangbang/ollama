@@ -151,7 +151,7 @@ describe("Onboarding completion", () => {
   });
 
   it.each([true, false])(
-    "saves once before opening Apps directly (already signed in: %s)",
+    "saves once before leaving onboarding directly (already signed in: %s)",
     async (authenticated) => {
       let resolveSave!: (value: { settings: Settings }) => void;
       const save = vi.spyOn(api, "updateSettings").mockImplementation(
@@ -183,7 +183,7 @@ describe("Onboarding completion", () => {
           resolveSave({ settings: save.mock.calls[0][0] });
         });
         expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith({
-          to: "/connect",
+          to: "/settings",
         });
       } finally {
         await onboarding.unmount();
@@ -220,7 +220,7 @@ describe("Onboarding completion", () => {
         expect(save).toHaveBeenCalledTimes(2);
         expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
         expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith({
-          to: "/connect",
+          to: "/settings",
         });
       } finally {
         await onboarding.unmount();

@@ -153,7 +153,7 @@ func openUI(path string) {
 }
 
 func openAppsUI() {
-	p := C.CString("/connect")
+	p := C.CString("/")
 	defer C.free(unsafe.Pointer(p))
 	C.uiRequest(p)
 }

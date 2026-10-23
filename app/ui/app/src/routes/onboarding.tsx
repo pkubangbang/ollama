@@ -91,9 +91,9 @@ function OnboardingRoute() {
     void completeOnboarding();
   }, [completeOnboarding]);
 
-  const openApps = useCallback(async (): Promise<boolean> => {
+  const openSettings = useCallback(async (): Promise<boolean> => {
     if (!(await completeOnboarding())) return false;
-    await navigate({ to: "/connect" });
+    await navigate({ to: "/settings" });
     return true;
   }, [completeOnboarding, navigate]);
 
@@ -207,7 +207,7 @@ function OnboardingRoute() {
       isAuthenticated={isAuthenticated}
       isSigningIn={isAwaitingAuth}
       signInError={signInError}
-      onOpenApps={openApps}
+      onFinish={openSettings}
       onSignIn={signIn}
       onSignUp={signUp}
       onRetryCompletion={retryCompletion}

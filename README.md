@@ -149,6 +149,7 @@ console.log(response.message.content);
 - [Importing models](https://docs.ollama.com/import)
 - [Modelfile reference](https://docs.ollama.com/modelfile)
 - [Building from source](https://github.com/ollama/ollama/blob/main/docs/development.md)
+- [Fork notes: where this repo diverges from upstream](FORK.md)
 
 ## Community Integrations
 
