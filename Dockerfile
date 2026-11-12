@@ -318,6 +318,109 @@ FROM ${FLAVOR} AS image-archive
 COPY --from=build /bin/ollama /bin/ollama
 COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
 
+#
+# CPU-only / driver-free stages (fork addition — see FORK.md §2).
+#
+# These stages build the same payload as the multi-backend image above but
+# depend on NOTHING from the GPU toolchain: no rocm-dev-almalinux base, no dnf
+# CUDA/ROCm repositories, no Vulkan SDK, no MLX. That is the point — the CPU
+# stages must build on a clean network with no NVIDIA/AMD package repos reachable.
+#
+#   docker buildx build --platform linux/amd64 -t pkubangbang/ollama:cpu --target cpu .
+#
+# Produces an image with the same paths as the multi-backend one:
+#   /bin/ollama        (Go CLI, cgo)
+#   /usr/lib/ollama/*  (CPU llama-server payload only)
+# and no ROCm/CUDA/Vulkan/MLX payloads anywhere.
+
+FROM --platform=linux/amd64 ubuntu:24.04 AS cpu-base
+ARG CMAKEVERSION
+ARG NINJAVERSION
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl git unzip xz-utils build-essential g++ ccache \
+        libgomp1 libopenblas0 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl --retry 3 -fsSL https://github.com/Kitware/CMake/releases/download/v${CMAKEVERSION}/cmake-${CMAKEVERSION}-linux-x86_64.tar.gz -o /tmp/cmake.tar.gz \
+    && tar xzf /tmp/cmake.tar.gz -C /usr/local --strip-components 1 \
+    && rm /tmp/cmake.tar.gz
+RUN curl --retry 3 -fsSL -o /tmp/ninja.zip https://github.com/ninja-build/ninja/releases/download/v${NINJAVERSION}/ninja-linux.zip \
+    && unzip /tmp/ninja.zip -d /usr/local/bin \
+    && rm /tmp/ninja.zip
+ENV CMAKE_GENERATOR=Ninja
+ENV LDFLAGS=-s
+
+# CPU llama-server backend (preset `cpu`, the Linux counterpart of cpu_windows)
+FROM cpu-base AS llama-server-cpu-only
+COPY LLAMA_CPP_VERSION .
+COPY llama/server llama/server
+COPY llama/compat llama/compat
+COPY cmake cmake
+RUN --mount=type=cache,target=/root/.ccache \
+    cmake -S llama/server --preset cpu \
+        && cmake --build build/llama-server-cpu -- -l $(nproc) \
+        && cmake --install build/llama-server-cpu --component llama-server --strip \
+        && for lib in /usr/lib/x86_64-linux-gnu/libgomp.so* /usr/lib/x86_64-linux-gnu/libomp.so*; do \
+            [ -e "$lib" ] && cp -a "$lib" dist/lib/ollama/ || true; \
+           done
+
+FROM scratch AS cpu-payload-llama-server
+COPY --from=llama-server-cpu-only dist/lib/ollama /lib/ollama/
+
+# Go CLI + Go license bundle. Same build as the `build` stage above, on the
+# CPU base so this stage never pulls a GPU base image.
+FROM cpu-base AS build-cpu-only
+WORKDIR /go/src/github.com/ollama/ollama
+COPY go.mod go.sum ./
+RUN curl --retry 3 -fsSL https://golang.org/dl/go$(awk '/^go/ { print $2 }' go.mod).linux-amd64.tar.gz -o /tmp/go.tar.gz \
+    && tar xzf /tmp/go.tar.gz -C /usr/local \
+    && rm /tmp/go.tar.gz
+ENV PATH=/usr/local/go/bin:$PATH
+RUN go mod download
+COPY . .
+ARG GOFLAGS="'-ldflags=-w -s'"
+ENV CGO_ENABLED=1
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildmode=pie -o /bin/ollama .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    cmake -S . -B build/go-license \
+        -DOLLAMA_LLAMA_BACKENDS= \
+        -DOLLAMA_MLX_BACKENDS= \
+    && cmake --build build/go-license --target ollama-go-license
+
+FROM scratch AS cpu-payload-go
+COPY --from=build-cpu-only /bin/ollama /bin/ollama
+COPY --from=build-cpu-only /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
+
+# CPU-only final image. `cpu` = runnable (serve), `cpu-archive` = payload only
+# for `COPY --from` in a downstream multi-stage build (this is what myblog uses).
+FROM ubuntu:24.04 AS cpu-archive
+ARG APT_MIRROR=http://archive.ubuntu.com/ubuntu
+COPY --from=cpu-payload-llama-server /lib/ollama /lib/ollama
+COPY --from=cpu-payload-go /bin/ollama /bin/ollama
+COPY --from=cpu-payload-go /lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
+
+FROM ubuntu:24.04 AS cpu
+ARG APT_MIRROR=http://archive.ubuntu.com/ubuntu
+RUN sed -i \
+        -e "s|http://archive.ubuntu.com/ubuntu|$APT_MIRROR|g" \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libopenblas0 libgomp1 \
+    && sed -i \
+        -e "s|$APT_MIRROR|http://archive.ubuntu.com/ubuntu|g" \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=cpu-archive /bin/ollama /bin/ollama
+COPY --from=cpu-archive /lib/ollama /usr/lib/ollama
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV OLLAMA_HOST=0.0.0.0:11434
+EXPOSE 11434
+ENTRYPOINT ["/bin/ollama"]
+CMD ["serve"]
+
 FROM ubuntu:24.04
 ARG APT_MIRROR=http://archive.ubuntu.com/ubuntu
 ARG APT_PORTS_MIRROR=http://ports.ubuntu.com/ubuntu-ports
