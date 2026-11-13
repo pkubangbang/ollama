@@ -107,10 +107,6 @@ func openUI(path string) {
 	wv.Run(path)
 }
 
-func openAppsUI() {
-	wv.Run("/")
-}
-
 func (*appCallbacks) UITerminate() {
 	wv.Terminate()
 }

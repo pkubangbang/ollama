@@ -385,10 +385,9 @@ func runInitialWindowsUI(
 		startHiddenFn()
 		return
 	}
-	if showOnboarding {
-		showUIFn("/")
-		return
-	}
+	// The Apps tab is gone, so "/" is the only interactive entry point: it
+	// sends first-run users to onboarding and everyone else straight to a
+	// chat. Do not point this at /connect or /apps, which no longer exist.
 	showUIFn("/")
 }
 
@@ -506,7 +505,9 @@ func openInBrowser(url string) {
 }
 
 // parseURLScheme parses an ollama:// URL and validates it
-// Supports: ollama:// (open app), ollama://apps, and ollama://connect (OAuth).
+// Supports: ollama:// (open app) and ollama://connect (OAuth).
+// ollama://apps is still accepted, but it now resolves to the default route
+// like a bare ollama:// request since the Apps page was removed.
 func parseURLScheme(urlSchemeRequest string) (action string, err error) {
 	parsedURL, err := url.Parse(urlSchemeRequest)
 	if err != nil {
@@ -518,8 +519,10 @@ func parseURLScheme(urlSchemeRequest string) (action string, err error) {
 		return "connect", nil
 	}
 
+	// The Apps tab was removed; keep old links and shortcuts working by
+	// treating them as a plain open request for the default route.
 	if parsedURL.Host == "apps" || strings.TrimPrefix(parsedURL.Path, "/") == "apps" {
-		return "apps", nil
+		return "", nil
 	}
 
 	// Allow bare ollama:// or ollama:/// to open the app
@@ -534,13 +537,13 @@ func parseURLScheme(urlSchemeRequest string) (action string, err error) {
 func handleURLSchemeInCurrentInstance(urlSchemeRequest string) {
 	err := dispatchURLSchemeRequest(urlSchemeRequest, handleConnectURLScheme, func() {
 		openUI("/")
-	}, openAppsUI)
+	})
 	if err != nil {
 		slog.Error("failed to parse URL scheme request", "url", urlSchemeRequest, "error", err)
 	}
 }
 
-func dispatchURLSchemeRequest(urlSchemeRequest string, connect, open, apps func()) error {
+func dispatchURLSchemeRequest(urlSchemeRequest string, connect, open func()) error {
 	action, err := parseURLScheme(urlSchemeRequest)
 	if err != nil {
 		return err
@@ -548,8 +551,6 @@ func dispatchURLSchemeRequest(urlSchemeRequest string, connect, open, apps func(
 	switch action {
 	case "connect":
 		connect()
-	case "apps":
-		apps()
 	default:
 		open()
 	}

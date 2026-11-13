@@ -1427,7 +1427,9 @@ didCompleteWithError:(NSError *)error {
 }
 
 - (void)appsUI {
-    [self uiRequest:@"/connect"];
+    // The Apps tab was removed, so this opens the default route: onboarding on
+    // a fresh install and a chat otherwise. Never target /connect here.
+    [self uiRequest:@"/"];
 }
 
 - (void)newChat {

@@ -48,14 +48,13 @@ func TestDispatchURLSchemeRequest(t *testing.T) {
 		request     string
 		wantConnect bool
 		wantOpen    bool
-		wantApps    bool
 		wantErr     bool
 	}{
 		{name: "bare URL opens app", request: "ollama://", wantOpen: true},
 		{name: "root URL opens app", request: "ollama:///", wantOpen: true},
-		{name: "apps URL opens Apps", request: "ollama://apps", wantApps: true},
-		{name: "apps path opens Apps", request: "ollama:///apps", wantApps: true},
-		{name: "apps trailing slash opens Apps", request: "ollama://apps/", wantApps: true},
+		{name: "apps URL opens the app", request: "ollama://apps", wantOpen: true},
+		{name: "apps path opens the app", request: "ollama:///apps", wantOpen: true},
+		{name: "apps trailing slash opens the app", request: "ollama://apps/", wantOpen: true},
 		{name: "connect URL starts connection", request: "ollama://connect", wantConnect: true},
 		{name: "connect path starts connection", request: "ollama:///connect", wantConnect: true},
 		{name: "unsupported URL", request: "ollama://unsupported", wantErr: true},
@@ -66,12 +65,10 @@ func TestDispatchURLSchemeRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			connected := false
 			opened := false
-			openedApps := false
 			err := dispatchURLSchemeRequest(
 				tt.request,
 				func() { connected = true },
 				func() { opened = true },
-				func() { openedApps = true },
 			)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("dispatchURLSchemeRequest() error = %v, wantErr %v", err, tt.wantErr)
@@ -81,9 +78,6 @@ func TestDispatchURLSchemeRequest(t *testing.T) {
 			}
 			if opened != tt.wantOpen {
 				t.Errorf("open called = %v, want %v", opened, tt.wantOpen)
-			}
-			if openedApps != tt.wantApps {
-				t.Errorf("open Apps called = %v, want %v", openedApps, tt.wantApps)
 			}
 		})
 	}
@@ -105,7 +99,6 @@ func TestRunInitialWindowsUIWithBareURL(t *testing.T) {
 			err := dispatchURLSchemeRequest(request,
 				func() { t.Fatal("unexpected sign-in") },
 				func() { openCalls++ },
-				func() { t.Fatal("unexpected Apps navigation") },
 			)
 			if err != nil {
 				t.Fatalf("dispatchURLSchemeRequest() error = %v", err)
@@ -131,26 +124,27 @@ func TestRunInitialWindowsUIWithBareURL(t *testing.T) {
 }
 
 func TestRunInitialWindowsUIWithAppsURL(t *testing.T) {
-	appsCalls := 0
+	opened := 0
 	runInitialWindowsUI(
 		false,
 		true,
 		"ollama://apps",
 		func() { t.Fatal("unexpected hidden startup") },
 		func(request string) {
+			// The Apps page is gone, so an ollama://apps request must open the
+			// default route instead of a removed Apps screen.
 			err := dispatchURLSchemeRequest(request,
 				func() { t.Fatal("unexpected sign-in") },
-				func() { t.Fatal("unexpected home navigation") },
-				func() { appsCalls++ },
+				func() { opened++ },
 			)
 			if err != nil {
 				t.Fatalf("dispatchURLSchemeRequest() error = %v", err)
 			}
 		},
-		func(string) { t.Fatal("unexpected onboarding") },
+		func(path string) { t.Fatalf("unexpected onboarding at %q", path) },
 	)
-	if appsCalls != 1 {
-		t.Fatalf("Apps opened %d times, want 1", appsCalls)
+	if opened != 1 {
+		t.Fatalf("default route opened %d times, want 1", opened)
 	}
 }
 
